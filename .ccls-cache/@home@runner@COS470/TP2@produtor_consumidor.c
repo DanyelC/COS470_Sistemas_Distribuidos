@@ -8,7 +8,7 @@
 #include <time.h>
 #include <unistd.h>
 
-// rodar com gcc teste.c -o teste -lpthread -lrt -lm
+// rodar com gcc produtor_consumidor.c -o teste -lpthread -lrt -lm && ./teste 32 1 1
 
 /*
   problemas :
@@ -34,14 +34,14 @@
 
 */
 
-sem_t semEmpty;
-sem_t semFull;
+pthread_mutex_t mutexN_pilha; //semaforo mutex p adicionar/apagar da pilha
+sem_t semaforo_livre; //semaforo contador de posições livres
+sem_t semaforo_preenchido; //semaforo contador de posições ocupadas
 
-pthread_mutex_t mutexN_pilha; //semaforo mutex p acesso a pilha
-
-int *N_pilha= NULL; // será usado como uma N_pilha
+int *N_pilha= NULL; // será usado como uma pilha --> facilita o processo
 int contador = 0; // usado para marcar em qual indice deve ser colocado/lido o número
 int ja_processados = 0; // para limitar o numero de valores consumidos
+int ja_produzidos = 0;
 
 void is_prime(int ni) {
   for (int i = 2; i <= sqrt(ni); i++) {
@@ -57,35 +57,35 @@ void is_prime(int ni) {
   printf("O %d é primo. WOW!\n", ni);
 }
 
-// Produtor não se preocupa com quantos já foram consumidos. Limitaçao e no consumidor
+// precisa verificar quantos numeros ja foram processados, senao vai rodar infinitamente.
 void *produzir(void *args) {
   srand(time(NULL));
-  while (true) {
-    
+  while (ja_processados < (int)pow(10,5)) {
     int r_numb = rand() % (int)pow(10, 7) + 1;
-    
-    sem_wait(&semEmpty);
+    printf("Produzido: %d\n", r_numb);
+    sem_wait(&semaforo_livre); // só produz se tiver espaço livre. Fica esperando
     pthread_mutex_lock(&mutexN_pilha);
     N_pilha[contador] = r_numb;
     contador++;
+    ja_produzidos++;
     pthread_mutex_unlock(&mutexN_pilha);
-    sem_post(&semFull);
+    sem_post(&semaforo_preenchido); // avisa que produziu 1
   }
 }
 
 //precisa verificar quantos numeros ja foram processados
 void *consumir(void *args) {
-  while (ja_processados < 0){// (int)pow(10,5)) {
-    sem_wait(&semFull);
+  while (ja_processados < (int)pow(10,1)) {
+    sem_wait(&semaforo_preenchido); // só produz se tiver espaço preenchido. Fica esperando
     pthread_mutex_lock(&mutexN_pilha);
     int ni = N_pilha[contador - 1];
     is_prime(ni); // talvez tirar do semaforo
     contador--;
     ja_processados++;
     pthread_mutex_unlock(&mutexN_pilha);
-    sem_post(&semEmpty);
+    sem_post(&semaforo_livre); // avisa que consumiu
   }
-  exit(0); // Quando processar 10^5, mata o processo. Roubado dms?
+  //exit(0); // Quando processar 10^5, mata o processo. Roubado dms? --> impossivel pegar o tempo
 }
 
 
@@ -110,8 +110,8 @@ int main(int argc, char *argv[]) {
 
   pthread_t th[threads]; // criando as threads
   pthread_mutex_init(&mutexN_pilha, NULL);
-  sem_init(&semEmpty, 0, 10);
-  sem_init(&semFull, 0, 0);
+  sem_init(&semaforo_livre, 0, N);  //N é qnts estão disponíveis no inicio do código
+  sem_init(&semaforo_preenchido, 0, 0); //0 é qnts estão preenchidos no inicio do código 
   for (int i = 0; i < threads; i++) {
     // criando np produtoras. o resto é consumidora
     if (i < np) { 
@@ -123,8 +123,10 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < threads; i++) {
     pthread_join(th[i], NULL);
   }
-  sem_destroy(&semEmpty);
-  sem_destroy(&semFull);
+  sem_destroy(&semaforo_livre);
+  sem_destroy(&semaforo_preenchido);
   pthread_mutex_destroy(&mutexN_pilha);
+  printf("Fábrica Fechada.\n");
   return 0;
 }
+
