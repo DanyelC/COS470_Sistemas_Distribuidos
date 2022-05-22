@@ -52,27 +52,37 @@ int contador =
 int ja_processados = 0; // para limitar o numero de valores consumidos
 int ja_produzidos = 0;
 
+int printar = 0;
+
 void is_prime(int ni) {
   for (int i = 2; i <= sqrt(ni); i++) {
     if (ni % i == 0) {
-      printf("O %d não é primo.\n", ni);
+      if (printar != 0) {
+        printf("O %d não é primo.\n", ni);
+      }
       return;
     }
   }
   if (ni <= 1) {
-    printf("O %d não é primo.\n", ni);
+    if (printar != 0) {
+      printf("O %d não é primo.\n", ni);
+    }
     return;
   }
-  printf("O %d é primo. WOW!\n", ni);
+  if (printar != 0) {
+    printf("O %d é primo. WOW!\n", ni);
+  }
 }
 
 // precisa verificar quantos numeros ja foram processados, senao vai rodar
 // infinitamente.
 void *produzir(void *args) {
   srand(time(NULL));
-  while (ja_processados < (int)pow(10, 1)) {
+  while (ja_processados < (int)pow(10, 5)) {
     int r_numb = rand() % (int)pow(10, 7) + 1;
-    printf("Produzido: %d\n", r_numb);
+    if (printar != 0) {
+      printf("Produzido: %d\n", r_numb);
+    }
     sem_wait(
         &semaforo_livre); // só produz se tiver espaço livre. Fica esperando
     pthread_mutex_lock(&mutexN_pilha);
@@ -86,7 +96,7 @@ void *produzir(void *args) {
 
 // precisa verificar quantos numeros ja foram processados
 void *consumir(void *args) {
-  while (ja_processados < (int)pow(10, 1)) {
+  while (ja_processados < (int)pow(10, 5)) {
     sem_wait(&semaforo_preenchido); // só produz se tiver espaço preenchido.
                                     // Fica esperando
     pthread_mutex_lock(&mutexN_pilha);
@@ -108,7 +118,7 @@ int main(int argc, char *argv[]) {
   int i = 10;
   double media = 0;
   FILE *file = fopen("resultados.csv", "a");
-  fprintf(file, "Combinacao, N, Tempo\n");
+  // fprintf(file, "Combinacao, N, Tempo\n");
 
   N = strtol(argv[1], &p, 10);
   np = strtol(argv[2], &p, 10);
@@ -157,7 +167,8 @@ int main(int argc, char *argv[]) {
     // fprintf(file, "%f\n", ((double)(finish - start)) / CLOCKS_PER_SEC);
     i--;
   }
-  fprintf(file, "%f\n", media / 10);
+  media /= 10;
+  fprintf(file, "%f\n", media);
   fclose(file);
   return 0;
 }
