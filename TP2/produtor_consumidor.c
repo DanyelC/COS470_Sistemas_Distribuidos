@@ -47,14 +47,17 @@ sem_t semaforo_livre;         // semaforo contador de posições livres
 sem_t semaforo_preenchido;    // semaforo contador de posições ocupadas
 
 int *N_pilha = NULL; // será usado como uma pilha --> facilita o processo
+pthread_t *th = NULL;
+int threads;
 int contador =
     0; // usado para marcar em qual indice deve ser colocado/lido o número
 int ja_processados = 0; // para limitar o numero de valores consumidos
-int ja_produzidos = 0;
+// int ja_produzidos = 0;
 
 int printar = 0;
 
 void is_prime(int ni) {
+  ja_processados++;
   for (int i = 2; i <= sqrt(ni); i++) {
     if (ni % i == 0) {
       if (printar != 0) {
@@ -76,9 +79,9 @@ void is_prime(int ni) {
 
 // precisa verificar quantos numeros ja foram processados, senao vai rodar
 // infinitamente.
-void *produzir(void *args) {
+void *produzir() {
   srand(time(NULL));
-  while (ja_processados < (int)pow(10, 5)) {
+  while (ja_processados < 100000) {
     int r_numb = rand() % (int)pow(10, 7) + 1;
     if (printar != 0) {
       printf("Produzido: %d\n", r_numb);
@@ -88,34 +91,50 @@ void *produzir(void *args) {
     pthread_mutex_lock(&mutexN_pilha);
     N_pilha[contador] = r_numb;
     contador++;
-    ja_produzidos++;
+    // ja_produzidos++;
     pthread_mutex_unlock(&mutexN_pilha);
     sem_post(&semaforo_preenchido); // avisa que produziu 1
+  }
+  printf("FIM PRODUÇÃO! %d Produzidos\n", ja_processados);
+  return NULL;
+}
+
+void mata_tudo() {
+  sem_destroy(&semaforo_livre);
+  sem_destroy(&semaforo_preenchido);
+  pthread_mutex_destroy(&mutexN_pilha);
+  for (int i = 0; i < threads; i++) {
+    pthread_cancel(th[i]);
   }
 }
 
 // precisa verificar quantos numeros ja foram processados
-void *consumir(void *args) {
-  while (ja_processados < (int)pow(10, 5)) {
+void *consumir() {
+  while (ja_processados < 100000) {
+    //int tic = rand() % 1000;
+    //printf("Aguardando sp. ticket: %d\n", tic);
     sem_wait(&semaforo_preenchido); // só produz se tiver espaço preenchido.
                                     // Fica esperando
+    //printf("entrei %d\n", tic);
     pthread_mutex_lock(&mutexN_pilha);
     int ni = N_pilha[contador - 1];
-    is_prime(ni); // talvez tirar do semaforo
+    is_prime(ni); // talvez tirar do semaforo --> nao pq joguei ja_processados
+                  // la dentro
     contador--;
-    ja_processados++;
     pthread_mutex_unlock(&mutexN_pilha);
     sem_post(&semaforo_livre); // avisa que consumiu
   }
+  printf("FIM CONSUMO! Consumidos %d\n", ja_processados);
+  mata_tudo();
+  return NULL;
   // exit(0); // Quando processar 10^5, mata o processo. Roubado dms? -->
-  // impossivel pegar o tempo
+  // e pegar o tempo?
 }
 
 int main(int argc, char *argv[]) {
   char *p; // pega valores do terminal
-  int N, threads, nc, np;
+  int N, nc, np;
   clock_t start, finish;
-  int i = 10;
   double media = 0;
   FILE *file = fopen("resultados.csv", "a");
   // fprintf(file, "Combinacao, N, Tempo\n");
@@ -123,7 +142,7 @@ int main(int argc, char *argv[]) {
   N = strtol(argv[1], &p, 10);
   np = strtol(argv[2], &p, 10);
   nc = strtol(argv[3], &p, 10);
-  fprintf(file, "%d %d, %d, ", np, nc, N);
+  //fprintf(file, "%d %d, %d, ", np, nc, N);
   N_pilha = malloc(
       N * sizeof(int)); // alocaçao dinamica do tamanho da pilha para facilitar
   threads = nc + np;
@@ -141,33 +160,33 @@ int main(int argc, char *argv[]) {
          "Threads Produtoras: %d\nNúmero de Threads Consumidoras: %d\n",
          N, threads, np, nc);
 
-  while (i > 0) {
-    pthread_t th[threads]; // criando as threads
-    pthread_mutex_init(&mutexN_pilha, NULL);
-    sem_init(&semaforo_livre, 0,
-             N); // N é qnts estão disponíveis no inicio do código
-    sem_init(&semaforo_preenchido, 0,
-             0); // 0 é qnts estão preenchidos no inicio do código
-    for (int i = 0; i < threads; i++) {
-      // criando np produtoras. o resto é consumidora
-      if (i < np) {
-        pthread_create(&th[i], NULL, &produzir, NULL);
-      } else {
-        pthread_create(&th[i], NULL, &consumir, NULL);
-      }
+  th = malloc(threads * sizeof(pthread_t)); // criando as threads
+  pthread_mutex_init(&mutexN_pilha, NULL);
+  sem_init(&semaforo_livre, 0,
+           N); // N é qnts estão disponíveis no inicio do código
+  sem_init(&semaforo_preenchido, 0,
+           0); // 0 é qnts estão preenchidos no inicio do código
+  for (int i = 0; i < threads; i++) {
+    // criando np produtoras. o resto é consumidora
+    if (i < np) {
+      pthread_create(&th[i], NULL, &produzir, NULL);
+      printf("Produtor criado!\n");
+    } else {
+      pthread_create(&th[i], NULL, &consumir, NULL);
+      printf("Consumidor criado!\n");
     }
-    for (int i = 0; i < threads; i++) {
-      pthread_join(th[i], NULL);
-    }
-    sem_destroy(&semaforo_livre);
-    sem_destroy(&semaforo_preenchido);
-    pthread_mutex_destroy(&mutexN_pilha);
-    finish = clock();
-    media += ((double)(finish - start)) / CLOCKS_PER_SEC;
-    // fprintf(file, "%f\n", ((double)(finish - start)) / CLOCKS_PER_SEC);
-    i--;
   }
-  media /= 10;
+  for (int i = 0; i < threads; i++) {
+    pthread_join(th[i], NULL);
+  }
+  // sem_destroy(&semaforo_livre);
+  // sem_destroy(&semaforo_preenchido);
+  // pthread_mutex_destroy(&mutexN_pilha);
+  finish = clock();
+  media = ((double)(finish - start)) / CLOCKS_PER_SEC;
+  // fprintf(file, "%f\n", ((double)(finish - start)) / CLOCKS_PER_SEC);
+  // free(N_pilha);
+
   fprintf(file, "%f\n", media);
   fclose(file);
   return 0;

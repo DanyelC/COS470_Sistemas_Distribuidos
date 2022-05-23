@@ -3,15 +3,17 @@
 #include <time.h>
 #include <pthread.h>
 
+// realizar a soma dos elementos de um vetor de n termos utilizando k threads
+//limitar acesso a variável global acumulador atraves de acquire/ release/ test and set
+int acumulador;
 void gerarVetor(int n){
     srand(time(NULL));
     int vetorAleatorio[n];
     for (int i=0;i<n;i++){
-        vetorAleatorio[i] = (rand()%100)+1;
+        vetorAleatorio[i] = (rand()%200)-99;
     }
 }
 void* funcaoSoma(){
-  int acumulador;
   for(int i=0; i<100;i++){
     acumulador++;
   }
