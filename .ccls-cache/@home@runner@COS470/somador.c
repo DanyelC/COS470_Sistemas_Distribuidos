@@ -1,63 +1,88 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
 #include <pthread.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 
 #define quantityThreads 2
 #define numberN 10000000
 // realizar a soma dos elementos de um vetor de n termos utilizando k threads
-//limitar acesso a variável global acumulador atraves de acquire/ release/ test and set
-int acumulador = 0;
+// limitar acesso a variável global acumulador atraves de acquire/ release/ test
+// and set
+
+
+int acumulador;
 int vetorAleatorio[numberN];
 
 struct lock {
-    int held;
+  int held;
+};
+struct estruturaThreads {
+  int numeroThread;
+  struct lock cadeado;
 };
 void acquire(struct lock cadeado) {
-    while (__sync_lock_test_and_set(&cadeado.held, 1))
-; //busy wait
+  while (__sync_lock_test_and_set(&cadeado.held, 1))
+    ; // busy wait
 }
 
-void release(struct lock *cadeado) {
-    cadeado->held = 0;
-}
-
-typedef struct argDado {
-    int numeroThread;
-} argDado;
-void gerarVetor(int n){
-    srand(time(NULL));
-    int vetorAleatorio[n];
-   for (int i=0;i<n;i++){
-        vetorAleatorio[i] = (rand()%200)-99;
-    }
+void release(struct lock *cadeado) { cadeado->held = 0; } 
+//libera acesso para outra thread
+void gerarVetor() {
+  srand(time(NULL));
+  for (int i = 0; i < numberN; i++) {
+    vetorAleatorio[i] = (rand() % 201) - 100; //intervalo:-100 a 100
   }
-void* funcaoSoma(void* arg){
-  argDado* dadoThread = (argDado*)arg;
-  int fim = (dadoThread->numeroThread) * (numberN/quantityThreads);
-  int inicio = fim - (numberN/quantityThreads);
+}
+
+void *funcaoSoma(void *arg) { 
+
+  struct estruturaThreads *args = arg;
   int somaParcial = 0;
-  for(int i=inicio; i<fim;i++){
+  int fim = (args->numeroThread) *
+            (int)(numberN / quantityThreads); 
+  int inicio =
+      fim - (int)(numberN / quantityThreads); 
+  // delimita região do vetor acessada pela thread
+  for (int i = inicio; i < fim; i++) {
     somaParcial += vetorAleatorio[i];
   }
-  acquire();
-  acumulador += somaParcial;
-  release();
+  acquire(args->cadeado);
+  acumulador += somaParcial; //serializando acesso a variavel global
+  release(&args->cadeado);
 
   return NULL;
 }
 
-
-void gerandoThreads(int k){
-  pthread_t th[k];
-  int i;
-  //serializar threads aqui
-  for(i=0;i<k;i++){
-    pthread_create(th + i, NULL, &funcaoSoma, NULL);
+void gerandoThreads() {
+  pthread_t th[quantityThreads];
+  struct lock cadeado;
+  cadeado.held = 0;
+  struct estruturaThreads args[quantityThreads];
+  for (int i = 0; i < quantityThreads; i++) {
+    args[i].numeroThread = i + 1; 
+    args[i].cadeado = cadeado;
+    pthread_create(&th[i], NULL, &funcaoSoma,
+                   (void *)&args[i]); 
   }
-  for(i=0;i<k;i++){
+  for (int i = 0; i < quantityThreads; i++) {
     pthread_join(th[i], NULL);
   }
 }
 
-
+int main() {
+  clock_t startTime, endTime;
+  double deltaT = 0;
+  for (int i = 0; i < 10; i++) { // media do deltaT
+    acumulador = 0;
+    gerarVetor();
+    startTime = clock();
+    gerandoThreads(); // threads atuam na fç soma
+    endTime = clock();
+    deltaT += (double)(endTime - startTime) / CLOCKS_PER_SEC;
+    printf("Acumulador: %d\n", acumulador);
+  }
+  printf("Tempo médio: %f\n", deltaT / 10);
+  printf("Acumulador: %d\n", acumulador);
+  return 0;
+}
