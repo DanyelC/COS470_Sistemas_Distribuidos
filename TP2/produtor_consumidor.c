@@ -8,40 +8,6 @@
 #include <time.h>
 #include <unistd.h>
 
-// rodar com gcc produtor_consumidor.c -o teste -lpthread -lrt -lm && ./teste 32
-// 1 1
-
-/*
-  problemas :
-
-    acesso a memoria compartilhada --> semaforo mutex
-    o que fazer quando a memória esta cheia/vazia? Checar se esta vazio ou cheio
-  --> semaforo contador
-
-*/
-
-/*
-  definir n = tamanho do N_pilha ===============================================
-  OK
-
-  definir nc e np = numero de threads de cada tipo
-  =============================== OK
-
-  produtor gera de 1 - 10^7 e bota na mem
-  ======================================== OK
-
-  consumidor pega o numero, esvazia o local e verifica se é primo. imprime no
-  terminal o resultado
-  ============================================================= OK
-
-  ordem na mem = semaforos
-  =========================================================== OK
-
-  se pode entrar no N_pilha ou nao = semaforo contador
-  ================================= OK
-
-*/
-
 pthread_mutex_t mutexN_pilha; // semaforo mutex p adicionar/apagar da pilha
 sem_t semaforo_livre;         // semaforo contador de posições livres
 sem_t semaforo_preenchido;    // semaforo contador de posições ocupadas
@@ -52,12 +18,10 @@ int threads;
 int contador =
     0; // usado para marcar em qual indice deve ser colocado/lido o número
 int ja_processados = 0; // para limitar o numero de valores consumidos
-// int ja_produzidos = 0;
 
 int printar = 0;
 
 void is_prime(int ni) {
-  ja_processados++;
   for (int i = 2; i <= sqrt(ni); i++) {
     if (ni % i == 0) {
       if (printar != 0) {
@@ -91,7 +55,6 @@ void *produzir() {
     pthread_mutex_lock(&mutexN_pilha);
     N_pilha[contador] = r_numb;
     contador++;
-    // ja_produzidos++;
     pthread_mutex_unlock(&mutexN_pilha);
     sem_post(&semaforo_preenchido); // avisa que produziu 1
   }
@@ -110,16 +73,13 @@ void mata_tudo() {
 
 // precisa verificar quantos numeros ja foram processados
 void *consumir() {
+  int ni = N_pilha[contador - 1];
   while (ja_processados < 100000) {
-    //int tic = rand() % 1000;
-    //printf("Aguardando sp. ticket: %d\n", tic);
     sem_wait(&semaforo_preenchido); // só produz se tiver espaço preenchido.
                                     // Fica esperando
-    //printf("entrei %d\n", tic);
+    is_prime(ni);
     pthread_mutex_lock(&mutexN_pilha);
-    int ni = N_pilha[contador - 1];
-    is_prime(ni); // talvez tirar do semaforo --> nao pq joguei ja_processados
-                  // la dentro
+    ja_processados++;
     contador--;
     pthread_mutex_unlock(&mutexN_pilha);
     sem_post(&semaforo_livre); // avisa que consumiu
@@ -127,8 +87,6 @@ void *consumir() {
   printf("FIM CONSUMO! Consumidos %d\n", ja_processados);
   mata_tudo();
   return NULL;
-  // exit(0); // Quando processar 10^5, mata o processo. Roubado dms? -->
-  // e pegar o tempo?
 }
 
 int main(int argc, char *argv[]) {
@@ -137,12 +95,10 @@ int main(int argc, char *argv[]) {
   clock_t start, finish;
   double media = 0;
   FILE *file = fopen("resultados.csv", "a");
-  // fprintf(file, "Combinacao, N, Tempo\n");
 
   N = strtol(argv[1], &p, 10);
   np = strtol(argv[2], &p, 10);
   nc = strtol(argv[3], &p, 10);
-  //fprintf(file, "%d %d, %d, ", np, nc, N);
   N_pilha = malloc(
       N * sizeof(int)); // alocaçao dinamica do tamanho da pilha para facilitar
   threads = nc + np;
@@ -179,14 +135,8 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < threads; i++) {
     pthread_join(th[i], NULL);
   }
-  // sem_destroy(&semaforo_livre);
-  // sem_destroy(&semaforo_preenchido);
-  // pthread_mutex_destroy(&mutexN_pilha);
   finish = clock();
   media = ((double)(finish - start)) / CLOCKS_PER_SEC;
-  // fprintf(file, "%f\n", ((double)(finish - start)) / CLOCKS_PER_SEC);
-  // free(N_pilha);
-
   fprintf(file, "%f\n", media);
   fclose(file);
   return 0;
