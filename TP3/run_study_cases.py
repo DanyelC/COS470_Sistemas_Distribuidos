@@ -49,9 +49,9 @@ if __name__ == '__main__':
             r = 3
             k = 0
             run_test(n, r, k)
-        else:
-            n = [2]
-            r = 10
-            k = 2
-            run_test(n, r, k)
+    else:
+        n = [2]
+        r = 10
+        k = 2
+        run_test(n, r, k)
             
