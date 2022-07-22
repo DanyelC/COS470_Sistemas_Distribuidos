@@ -24,4 +24,4 @@ class ProcessRequest{
     message get_msg(){
       return msg;
     }    
-}
+};
